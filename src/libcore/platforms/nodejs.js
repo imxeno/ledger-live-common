@@ -48,14 +48,12 @@ export default (arg: {
     const stringVersion = lcore.getStringVersion();
     const sqlitePrefix = `v${stringVersion.split(".")[0]}`;
 
-    const hexToBytes = str =>
-      Array.from(Buffer.from(str.startsWith("0x") ? str.slice(2) : str, "hex"));
-    const bytesToHex = buf => Buffer.from(buf).toString("hex");
-
-    const bytesArrayToString = (bytesArray = []) =>
-      Buffer.from(bytesArray).toString();
-
-    const stringToBytesArray = str => Array.from(Buffer.from(str));
+    const hexToBytes = str => (
+      console.log("hexToBytes", str), str.startsWith("0x") ? str : "0x" + str
+    );
+    const bytesToHex = str => (
+      console.log("bytesToHex", str), str.startsWith("0x") ? str.slice(2) : str
+    );
 
     const NJSExecutionContextImpl = {
       execute: runnable => {
@@ -113,7 +111,7 @@ export default (arg: {
         getHeaders: () => headersMap,
         readBody: () => ({
           error: libcoreError,
-          data: stringToBytesArray(res.data)
+          data: (console.log("readBody", res.data), res.data)
         })
       };
       return new lib.NJSHttpUrlConnection(NJSHttpUrlConnectionImpl);
@@ -142,14 +140,11 @@ export default (arg: {
           transformResponse: data => data
         };
 
-        if (Array.isArray(data)) {
-          if (data.length === 0) {
-            data = null;
-          } else {
-            // we transform back to a string
-            data = bytesArrayToString(data);
-          }
+        console.log("DATA IS ", typeof data, { data });
+        if (typeof data === "string" && data.startsWith("0x")) {
+          data = Buffer.from(data.slice(2), "hex").toString();
         }
+
         if (data) {
           param.data = data;
           if (!headers["Content-Type"]) {
@@ -349,7 +344,11 @@ export default (arg: {
                 }
                 return arg;
               });
-              return new m(...args);
+              const value = new m(...args);
+              if (process.env.VERBOSE_LIBCORE_CALL) {
+                log("libcore-result", id + "." + method, { value });
+              }
+              return value;
             };
           } else if (njsBuggyMethodIsNotStatic) {
             // There is a bug in the node bindings that don't expose the static functions
@@ -361,7 +360,11 @@ export default (arg: {
                 typeof njsBuggyMethodIsNotStatic === "function"
                   ? njsBuggyMethodIsNotStatic(args)
                   : args;
-              return new m(...constructorArgs)[method](...args);
+              const value = new m(...constructorArgs)[method](...args);
+              if (process.env.VERBOSE_LIBCORE_CALL) {
+                log("libcore-result", id + "." + method, { value });
+              }
+              return value;
             };
           }
         });
@@ -379,6 +382,9 @@ export default (arg: {
                 log("libcore-call", id + "#" + method);
               }
               const value = this[njsField];
+              if (process.env.VERBOSE_LIBCORE_CALL) {
+                log("libcore-result", id + "#" + method, { value });
+              }
               const Cls =
                 typeof returns === "string" && returns in mappings
                   ? mappings[returns]
@@ -402,8 +408,11 @@ export default (arg: {
               const args = params
                 ? a.map((value, i) => unwrapArg(params[i], value))
                 : a;
-              const result = await f.apply(this, args);
-              return wrapResult(returns, result);
+              const value = await f.apply(this, args);
+              if (process.env.VERBOSE_LIBCORE_CALL) {
+                log("libcore-result", id + "#" + method, { value });
+              }
+              return wrapResult(returns, value);
             };
           }
         });
